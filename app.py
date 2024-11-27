@@ -7,13 +7,16 @@ The application uses the base64 library to encode the client_id and client_secre
 
 By: Yashraj221B
 Date: 2024-03-28
+Last Updated: 2024-11-27
 Email: developer221b@gmail.com
 """
 
+import html
 import json
+import time
 import base64
-import requests
 import colorama
+import requests
 import webbrowser
 from inspect import getframeinfo, currentframe
 # import tqdm
@@ -231,7 +234,7 @@ def addTracksToPlaylist(access_token: str, playlist_id: str, track_ids: list) ->
     """
     url = "https://api.spotify.com/v1/playlists/" + playlist_id + "/tracks"
     headers = {"Authorization": "Bearer " + access_token, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, data=data)
+    response = requests.post(url, headers=headers)
     start = 0
     step = 50
     for i in range(start, len(track_ids), step):
@@ -255,14 +258,18 @@ def changeCoverImage(access_token: str, playlist_id: str, image_url: str) -> dic
     url = "https://api.spotify.com/v1/playlists/" + playlist_id + "/images"
     headers = {"Authorization": "Bearer " + access_token, "Content-Type": "image/jpeg"}
     b64_image = base64.b64encode(requests.get(image_url).content).decode()
-    response = requests.put(url, headers=headers, data=b64_image)
-    if response.status_code != 202:
-        frameinfo = getframeinfo(currentframe())
-        logger.logError("Unable to change cover image | " + f"[{response.status_code}]" + str(response.json()))
-        logger.logError("Exiting...")
-        print(frameinfo.filename, frameinfo.lineno, frameinfo.function)
-        exit(-1)
-    logger.logSuccess("Cover image changed successfully.")
+    
+    for attempt in range(3):
+        response = requests.put(url, headers=headers, data=b64_image)
+        if response.status_code == 202:
+            logger.logSuccess("Cover image changed successfully.")
+            return response
+        else:
+            logger.logError(f"Attempt {attempt + 1}: Unable to change cover image | " + f"[{response.status_code}]" + str(response.json()))
+            logger.logInfo("Retrying in 3 seconds...")
+            time.sleep(3)
+    
+    logger.logError("Failed to change cover image after 3 attempts. Moving on...")
     return response
 
 def getUserInfo(access_token: str) -> dict:
@@ -294,10 +301,10 @@ def getUserInfo(access_token: str) -> dict:
 if __name__ == "__main__":
     # Testing Phase ======================================================
     logger = Logger()
-    logger.logInfo("This is an informational message.")
-    logger.logError("This is an error message.")
-    logger.logWarning("This is a warning message.")
-    logger.logSuccess("This is a success message.")
+    # logger.logInfo("This is an informational message.")
+    # logger.logError("This is an error message.")
+    # logger.logWarning("This is a warning message.")
+    # logger.logSuccess("This is a success message.")
 
     # primary account
     primary_client_id = "YOUR_CLIENT_ID"
@@ -314,21 +321,27 @@ if __name__ == "__main__":
     authorizeUser(primary_client_id, primary_client_scopes)
     primary_authorization_code = input("Enter the authorization code: ")
     primary_access_token = getAccessToken(primary_client_id, primary_client_secret, primary_authorization_code)
+    
+    logger.logInfo("Primary Account Access Token: " + primary_access_token)
 
     authorizeUser(secondary_client_id, secondary_client_scopes)
     secondary_authorization_code = input("Enter the authorization code: ")
     secondary_access_token = getAccessToken(secondary_client_id, secondary_client_secret, secondary_authorization_code)
 
+    logger.logInfo("Secondary Account Access Token: " + secondary_access_token)
+
     primary_playlists = getPlaylistsInfo(primary_access_token)
 
     for primary_playlist in primary_playlists["playlists"]:
         print("\n==============================================================================")
+        primary_playlist["description"] = html.unescape(primary_playlist["description"])
         logger.logInfo("Playlist ID: " + str(primary_playlist["id"]))
         logger.logInfo("Playlist Name: " + str(primary_playlist["name"]))
         logger.logInfo("Playlist Description: " + str(primary_playlist["description"]))
         logger.logInfo("Playlist Images: " + str(primary_playlist["images"]))
         logger.logInfo("Playlist Public: " + str(primary_playlist["public"]))
         logger.logInfo("Playlist Tracks: " + str(primary_playlist["tracks"]))
+
         
         primary_playlist_tracks = getPlaylistTracks(primary_access_token, primary_playlist["id"])
 
